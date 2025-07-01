@@ -1,7 +1,9 @@
 from datetime import date
-from app.database import SessionLocal
+from app.database import SessionLocal, Base, engine
 from app.models import Article
 import hashlib
+
+Base.metadata.create_all(bind=engine)
 
 
 def generate_unique_id(article_url: str, source: str, fetched_at: date) -> str:
@@ -32,3 +34,15 @@ def save_articles_to_db(articles: list[dict]):
 
     session.commit()
     session.close()
+
+
+def lambda_handler(event=None, context=None):
+    from app.parsers.zenn import fetch_zenn_articles
+
+    articles = fetch_zenn_articles()
+    save_articles_to_db(articles)
+    return {
+        "statusCode": 200,
+        "count": len(articles),
+        "body": "Articles fetched and saved successfully.",
+    }
