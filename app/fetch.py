@@ -1,9 +1,13 @@
-from datetime import date
-from app.database import SessionLocal, Base, engine
-from app.models import Article
+import os
 import hashlib
+from datetime import date
+from dotenv import load_dotenv
+import requests
 
-Base.metadata.create_all(bind=engine)
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
 
 
 def generate_unique_id(article_url: str, source: str, fetched_at: date) -> str:
@@ -12,28 +16,37 @@ def generate_unique_id(article_url: str, source: str, fetched_at: date) -> str:
 
 
 def save_articles_to_db(articles: list[dict]):
-    session = SessionLocal()
     fetched_at = date.today()
+
+    # ref: https://docs.postgrest.org/en/v12/references/api/tables_views.html#upsert
+    url = f"{SUPABASE_URL}/rest/v1/articles"
+    headers = {
+        "apikey": SUPABASE_API_KEY,
+        "Authorization": f"Bearer {SUPABASE_API_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
 
     for article in articles:
         article_id = generate_unique_id(article["url"], article["source"], fetched_at)
 
-        if session.query(Article).filter_by(id=article_id).first():
-            continue  # Skip if article already exists
+        payload = {
+            "id": article_id,
+            "url": article["url"],
+            "title": article["title"],
+            "description": article.get("description", ""),
+            "source": article["source"],
+            "published_at": (
+                article["published_at"].isoformat()
+                if hasattr(article["published_at"], "isoformat")
+                else article["published_at"]
+            ),
+            "fetched_at": fetched_at.isoformat(),
+        }
 
-        new_article = Article(
-            id=article_id,
-            url=article["url"],
-            title=article["title"],
-            description=article.get("description", ""),
-            source=article["source"],
-            published_at=article["published_at"],
-            fetched_at=fetched_at,
-        )
-        session.add(new_article)
-
-    session.commit()
-    session.close()
+        response = requests.post(url, headers=headers, json=payload)
+        if not response.ok:
+            print(f"Failed to save article {article['url']}: {response.text}")
 
 
 def lambda_handler(event=None, context=None):
