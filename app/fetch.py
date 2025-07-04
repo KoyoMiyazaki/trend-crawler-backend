@@ -50,9 +50,12 @@ def save_articles_to_db(articles: list[dict]):
 
 
 def lambda_handler(event=None, context=None):
+    from app.parsers.qiita import fetch_qiita_articles
     from app.parsers.zenn import fetch_zenn_articles
 
-    articles = fetch_zenn_articles()
+    articles = []
+    articles.extend(fetch_zenn_articles())
+    articles.extend(fetch_qiita_articles())
     save_articles_to_db(articles)
     return {
         "statusCode": 200,
